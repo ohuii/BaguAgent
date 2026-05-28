@@ -118,7 +118,15 @@ func (h *Handler) ListChunks(c *gin.Context) {
 
 // Index 是第三阶段 Milvus 索引接口的占位实现。
 func (h *Handler) Index(c *gin.Context) {
-	response.Error(c, http.StatusNotImplemented, "document indexing will be implemented in phase 3")
+	id, ok := parseIDParam(c)
+	if !ok {
+		return
+	}
+	if err := h.service.IndexDocument(c.Request.Context(), id); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"indexed": true})
 }
 
 func parseIDParam(c *gin.Context) (uint64, bool) {

@@ -6,7 +6,11 @@ import (
 	chunkrepo "bagu-agent/backend/internal/chunk"
 	"bagu-agent/backend/internal/config"
 	"bagu-agent/backend/internal/document"
+	"bagu-agent/backend/internal/embedder"
+	"bagu-agent/backend/internal/indexer"
 	"bagu-agent/backend/internal/middleware"
+	"bagu-agent/backend/internal/retriever"
+	"bagu-agent/backend/internal/vectorstore"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -45,8 +49,15 @@ func New(deps Dependencies) *gin.Engine {
 
 		docRepo := document.NewRepository(deps.DB)
 		chunkRepo := chunkrepo.NewRepository(deps.DB)
-		docService := document.NewService(deps.Config.Storage, docRepo, chunkRepo)
+		embeddingClient, err := embedder.New(deps.Config.AI, deps.Config.Milvus.EmbeddingDim)
+		if err != nil {
+			panic(err)
+		}
+		milvusStore := vectorstore.NewLazyMilvusStore(deps.Config.Milvus)
+		indexerService := indexer.NewService(deps.Config.Milvus.CollectionName, docRepo, chunkRepo, embeddingClient, milvusStore)
+		docService := document.NewService(deps.Config.Storage, docRepo, chunkRepo, indexerService)
 		document.NewHandler(docService).RegisterRoutes(api)
+		retriever.NewHandler(retriever.NewService(embeddingClient, milvusStore)).RegisterRoutes(api)
 	}
 
 	return r

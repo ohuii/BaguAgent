@@ -29,12 +29,14 @@ milvus:
   addr: 127.0.0.1:19530
   collection_name: bagu_chunks_v1
   embedding_dim: 1024
+  metric_type: COSINE
+  index_type: HNSW
 
 storage:
   upload_dir: uploads
 
 ai:
-  provider: openai-compatible
+  provider: mock
   chat_model: ""
   embedding_model: ""
   base_url: ""

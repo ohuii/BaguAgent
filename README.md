@@ -57,3 +57,35 @@ curl "http://127.0.0.1:8080/api/documents/1/chunks"
 ```
 
 当前阶段只完成 Markdown -> MySQL chunk，`POST /api/documents/:id/index` 会在第三阶段接入 embedding 和 Milvus。
+
+## Milvus 索引与检索
+
+第三阶段已经接入 embedding 和 Milvus。默认配置使用 `ai.provider: mock`，可以在没有大模型 API Key 的情况下跑通写入和检索链路；它不代表真实语义效果，只适合本地联调。
+
+启动 Milvus 相关依赖：
+
+```bash
+docker compose up -d etcd minio milvus
+```
+
+把某个文档的 chunks 写入 Milvus，假设文档 ID 是 `1`：
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/documents/1/index
+```
+
+检索调试：
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/retrieval/search \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1,"query":"GMP 模型是什么？","category":"Go","top_k":5}'
+```
+
+如果要使用真实 embedding 模型，把 `configs/config.yaml` 里的 `ai.provider` 改成 `openai-compatible`，并通过环境变量传入密钥：
+
+```bash
+export BAGU_AI_BASE_URL="https://api.openai.com/v1"
+export BAGU_AI_API_KEY="your-api-key"
+export BAGU_AI_EMBEDDING_MODEL="text-embedding-3-small"
+```

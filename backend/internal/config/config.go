@@ -67,6 +67,8 @@ type MilvusConfig struct {
 	Addr           string `mapstructure:"addr"`
 	CollectionName string `mapstructure:"collection_name"`
 	EmbeddingDim   int    `mapstructure:"embedding_dim"`
+	MetricType     string `mapstructure:"metric_type"`
+	IndexType      string `mapstructure:"index_type"`
 }
 
 // StorageConfig 描述本地上传文件保存位置。
@@ -126,5 +128,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis.enabled", false)
 	v.SetDefault("milvus.collection_name", "bagu_chunks_v1")
 	v.SetDefault("milvus.embedding_dim", 1024)
+	v.SetDefault("milvus.metric_type", "COSINE")
+	v.SetDefault("milvus.index_type", "HNSW")
 	v.SetDefault("storage.upload_dir", "uploads")
 }

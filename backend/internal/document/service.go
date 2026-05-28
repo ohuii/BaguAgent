@@ -22,15 +22,22 @@ type Service struct {
 	storageCfg config.StorageConfig
 	docRepo    *Repository
 	chunkRepo  *chunkmodel.Repository
+	indexer    Indexer
 }
 
 // NewService 创建文档服务。
-func NewService(storageCfg config.StorageConfig, docRepo *Repository, chunkRepo *chunkmodel.Repository) *Service {
+func NewService(storageCfg config.StorageConfig, docRepo *Repository, chunkRepo *chunkmodel.Repository, indexer Indexer) *Service {
 	return &Service{
 		storageCfg: storageCfg,
 		docRepo:    docRepo,
 		chunkRepo:  chunkRepo,
+		indexer:    indexer,
 	}
+}
+
+// Indexer 是文档服务依赖的索引能力，避免 document 包反向依赖具体 indexer 包。
+type Indexer interface {
+	IndexDocument(ctx context.Context, documentID uint64) error
 }
 
 // UploadMarkdownInput 是 Markdown 上传入参。
@@ -137,6 +144,14 @@ func (s *Service) Get(ctx context.Context, id uint64) (*Document, error) {
 // ListChunks 查询文档 chunk 列表。
 func (s *Service) ListChunks(ctx context.Context, documentID uint64) ([]chunkmodel.DocumentChunk, error) {
 	return s.chunkRepo.ListByDocumentID(ctx, documentID)
+}
+
+// IndexDocument 触发文档 chunk 向量化并写入 Milvus。
+func (s *Service) IndexDocument(ctx context.Context, documentID uint64) error {
+	if s.indexer == nil {
+		return fmt.Errorf("indexer is not configured")
+	}
+	return s.indexer.IndexDocument(ctx, documentID)
 }
 
 // Delete 删除文档和对应 chunk。Milvus 删除会在第三阶段补上。
