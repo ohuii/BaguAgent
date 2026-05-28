@@ -1,0 +1,41 @@
+app:
+  name: BaguAgent
+  env: local
+  auto_migrate: true
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  mode: debug
+
+log:
+  level: info
+  encoding: console
+  stacktrace: false
+
+mysql:
+  dsn: "bagu:bagu123@tcp(127.0.0.1:13306)/bagu_agent?charset=utf8mb4&parseTime=True&loc=Local"
+  max_idle_conns: 5
+  max_open_conns: 20
+  conn_max_lifetime: 1h
+
+redis:
+  enabled: false
+  addr: 127.0.0.1:16379
+  password: ""
+  db: 0
+
+milvus:
+  addr: 127.0.0.1:19530
+  collection_name: bagu_chunks_v1
+  embedding_dim: 1024
+
+storage:
+  upload_dir: uploads
+
+ai:
+  provider: openai-compatible
+  chat_model: ""
+  embedding_model: ""
+  base_url: ""
+  api_key: ""

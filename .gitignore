@@ -1,0 +1,11 @@
+.gocache/
+.gomodcache/
+.gopath/
+
+backend/bin/
+backend/tmp/
+backend/uploads/
+
+*.exe
+*.test
+.env
