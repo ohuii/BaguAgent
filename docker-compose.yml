@@ -74,10 +74,19 @@ services:
       - etcd
       - minio
 
+  attu:
+    image: zilliz/attu:v2.4
+    container_name: bagu-attu
+    environment:
+      MILVUS_URL: milvus:19530
+    ports:
+      - "18000:3000"
+    depends_on:
+      - milvus
+
 volumes:
   mysql_data:
   redis_data:
   etcd_data:
   minio_data:
   milvus_data:
-

@@ -10,6 +10,7 @@ type DocumentChunk struct {
 	ChunkUID         string    `gorm:"size:64;uniqueIndex;not null" json:"chunk_uid"`
 	TitlePath        string    `gorm:"size:1024;index:,length:255;not null" json:"title_path"`
 	HeadingLevel     int       `gorm:"not null" json:"heading_level"`
+	Category         string    `gorm:"size:64;index" json:"category"`
 	Content          string    `gorm:"type:longtext;not null" json:"content"`
 	ContentWithTitle string    `gorm:"type:longtext;not null" json:"content_with_title"`
 	ChunkIndex       int       `gorm:"not null" json:"chunk_index"`

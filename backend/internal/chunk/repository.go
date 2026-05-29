@@ -45,6 +45,14 @@ func (r *Repository) UpdateMilvusFields(ctx context.Context, id uint64, collecti
 		}).Error
 }
 
+// UpdateCategory 回写 chunk 级分类，兼容旧数据重新索引时补分类的场景。
+func (r *Repository) UpdateCategory(ctx context.Context, id uint64, category string) error {
+	return r.db.WithContext(ctx).
+		Model(&DocumentChunk{}).
+		Where("id = ?", id).
+		Update("category", category).Error
+}
+
 // DeleteByDocumentID 删除某个文档下的所有 chunk。
 func (r *Repository) DeleteByDocumentID(ctx context.Context, documentID uint64) error {
 	return r.db.WithContext(ctx).

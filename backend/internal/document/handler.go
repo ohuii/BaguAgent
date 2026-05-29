@@ -26,7 +26,6 @@ func (h *Handler) RegisterRoutes(r gin.IRouter) {
 	r.GET("/documents/:id", h.Get)
 	r.DELETE("/documents/:id", h.Delete)
 	r.GET("/documents/:id/chunks", h.ListChunks)
-	r.POST("/documents/:id/index", h.Index)
 }
 
 // Upload 上传并解析 Markdown 文档。
@@ -114,19 +113,6 @@ func (h *Handler) ListChunks(c *gin.Context) {
 		return
 	}
 	response.OK(c, chunks)
-}
-
-// Index 是第三阶段 Milvus 索引接口的占位实现。
-func (h *Handler) Index(c *gin.Context) {
-	id, ok := parseIDParam(c)
-	if !ok {
-		return
-	}
-	if err := h.service.IndexDocument(c.Request.Context(), id); err != nil {
-		response.Error(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	response.OK(c, gin.H{"indexed": true})
 }
 
 func parseIDParam(c *gin.Context) (uint64, bool) {

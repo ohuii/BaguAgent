@@ -60,3 +60,73 @@ func TestSplitMarkdownBlocksKeepsFence(t *testing.T) {
 		t.Fatalf("expected fenced code block to stay complete, block = %q", codeBlock)
 	}
 }
+
+func TestInferCategory(t *testing.T) {
+	tests := []struct {
+		name      string
+		titlePath string
+		fallback  string
+		want      string
+	}{
+		{
+			name:      "golang",
+			titlePath: "一、Golang 八股 / 2. GMP 调度",
+			fallback:  "Interview",
+			want:      "Go",
+		},
+		{
+			name:      "mysql",
+			titlePath: "二、MySQL 八股 / 3. MVCC / undo log",
+			fallback:  "Interview",
+			want:      "MySQL",
+		},
+		{
+			name:      "redis",
+			titlePath: "三、Redis 八股 / IO 多路复用",
+			fallback:  "Interview",
+			want:      "Redis",
+		},
+		{
+			name:      "fallback",
+			titlePath: "面试经验 / 项目介绍",
+			fallback:  "General",
+			want:      "General",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := InferCategory(tt.titlePath, tt.fallback); got != tt.want {
+				t.Fatalf("InferCategory() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestChunkMarkdownFiltersDecorativeBlocks(t *testing.T) {
+	source := []byte(`# Go 八股
+
+## GMP 模型
+
+### 元信息
+
+> 重要程度：⭐⭐⭐⭐⭐（5/5）
+> 出现频率：⭐⭐⭐⭐⭐（5/5）
+
+#####
+
+### 核心结论
+
+GMP 是 Go runtime 的 goroutine 调度模型。
+`)
+
+	chunks, err := ChunkMarkdown(source, "go.md", "Go", DefaultChunkerOptions())
+	if err != nil {
+		t.Fatalf("ChunkMarkdown() error = %v", err)
+	}
+	for _, chunk := range chunks {
+		if strings.Contains(chunk.Content, "重要程度") || strings.Contains(chunk.Content, "#####") {
+			t.Fatalf("decorative content should be filtered, chunk = %+v", chunk)
+		}
+	}
+}

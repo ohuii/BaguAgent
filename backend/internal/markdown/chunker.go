@@ -36,7 +36,7 @@ type ChunkerOptions struct {
 // DefaultChunkerOptions 返回适合八股文档的默认 chunk 参数。
 func DefaultChunkerOptions() ChunkerOptions {
 	return ChunkerOptions{
-		MinTokens:     80,
+		MinTokens:     160,
 		TargetTokens:  500,
 		MaxTokens:     800,
 		OverlapTokens: 80,
@@ -79,6 +79,9 @@ func ChunkMarkdown(source []byte, sourceFile string, category string, opts Chunk
 
 		parts := splitSectionContent(content, opts)
 		for _, part := range parts {
+			if isDecorativeContent(part) {
+				continue
+			}
 			tokenCount := EstimateTokens(part)
 			chunks = append(chunks, Chunk{
 				TitlePath:        h.TitlePath,
@@ -87,7 +90,7 @@ func ChunkMarkdown(source []byte, sourceFile string, category string, opts Chunk
 				ContentWithTitle: h.TitlePath + "\n" + part,
 				TokenCount:       tokenCount,
 				SourceFile:       sourceFile,
-				Category:         category,
+				Category:         InferCategory(h.TitlePath, category),
 			})
 		}
 	}
@@ -97,6 +100,33 @@ func ChunkMarkdown(source []byte, sourceFile string, category string, opts Chunk
 		chunks[i].ChunkIndex = i
 	}
 	return chunks, nil
+}
+
+// InferCategory 根据标题路径推断 chunk 分类。
+// 汇总类 Markdown 通常在一级标题里包含 Go、MySQL、Redis 等主题，优先用标题路径识别。
+func InferCategory(titlePath string, fallback string) string {
+	normalized := strings.ToLower(titlePath)
+	rules := []struct {
+		category string
+		keywords []string
+	}{
+		{category: "Go", keywords: []string{"golang", "go 八股", "go语言", "go 语言", "goroutine", "gmp"}},
+		{category: "MySQL", keywords: []string{"mysql", "innodb", "mvcc", "事务", "索引"}},
+		{category: "Redis", keywords: []string{"redis", "缓存", "rdb", "aof"}},
+		{category: "OS", keywords: []string{"操作系统", "进程", "线程", "内存管理", "死锁"}},
+		{category: "Network", keywords: []string{"计算机网络", "网络", "tcp", "udp", "http", "https"}},
+		{category: "Linux", keywords: []string{"linux", "shell"}},
+		{category: "Docker", keywords: []string{"docker", "容器", "kubernetes", "k8s"}},
+	}
+
+	for _, rule := range rules {
+		for _, keyword := range rule.keywords {
+			if strings.Contains(normalized, strings.ToLower(keyword)) {
+				return rule.category
+			}
+		}
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func parseHeadings(source []byte, sourceFile string) ([]headingInfo, error) {
@@ -184,7 +214,16 @@ func fillTitlePaths(headings []headingInfo) {
 }
 
 func cleanSectionContent(content string) string {
-	return strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n"))
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	var lines []string
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if isNoiseLine(trimmed) {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 func splitSectionContent(content string, opts ChunkerOptions) []string {
@@ -292,39 +331,71 @@ func mergeShortChunks(chunks []Chunk, opts ChunkerOptions) []Chunk {
 	merged := make([]Chunk, 0, len(chunks))
 	for i := 0; i < len(chunks); i++ {
 		current := chunks[i]
+		if isDecorativeContent(current.Content) {
+			continue
+		}
 		if current.TokenCount >= opts.MinTokens || i+1 >= len(chunks) {
 			merged = append(merged, current)
 			continue
 		}
 
-		next := chunks[i+1]
-		if sameParent(current.TitlePath, next.TitlePath) && current.TokenCount+next.TokenCount <= opts.MaxTokens {
-			parent := parentPath(current.TitlePath)
-			if parent == "" {
-				parent = current.TitlePath
+		group := []Chunk{current}
+		totalTokens := current.TokenCount
+		parent := parentPath(current.TitlePath)
+		for j := i + 1; j < len(chunks); j++ {
+			next := chunks[j]
+			if isDecorativeContent(next.Content) {
+				i = j
+				continue
 			}
-			content := "### " + current.TitlePath + "\n" + current.Content + "\n\n" +
-				"### " + next.TitlePath + "\n" + next.Content
-			merged = append(merged, Chunk{
-				TitlePath:        parent,
-				HeadingLevel:     min(current.HeadingLevel, next.HeadingLevel),
-				Content:          content,
-				ContentWithTitle: parent + "\n" + content,
-				TokenCount:       EstimateTokens(content),
-				SourceFile:       current.SourceFile,
-				Category:         current.Category,
-			})
-			i++
-			continue
+			if parentPath(next.TitlePath) != parent || totalTokens+next.TokenCount > opts.MaxTokens {
+				break
+			}
+			group = append(group, next)
+			totalTokens += next.TokenCount
+			i = j
+			if totalTokens >= opts.TargetTokens {
+				break
+			}
 		}
 
-		merged = append(merged, current)
+		if len(group) > 1 {
+			merged = append(merged, mergeChunkGroup(group))
+		} else {
+			merged = append(merged, current)
+		}
 	}
 	return merged
 }
 
-func sameParent(a, b string) bool {
-	return parentPath(a) == parentPath(b)
+func mergeChunkGroup(group []Chunk) Chunk {
+	parent := parentPath(group[0].TitlePath)
+	if parent == "" {
+		parent = group[0].TitlePath
+	}
+	headingLevel := group[0].HeadingLevel
+	var b strings.Builder
+	for i, chunk := range group {
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString("### ")
+		b.WriteString(chunk.TitlePath)
+		b.WriteString("\n")
+		b.WriteString(chunk.Content)
+		headingLevel = min(headingLevel, chunk.HeadingLevel)
+	}
+
+	content := strings.TrimSpace(b.String())
+	return Chunk{
+		TitlePath:        parent,
+		HeadingLevel:     headingLevel,
+		Content:          content,
+		ContentWithTitle: parent + "\n" + content,
+		TokenCount:       EstimateTokens(content),
+		SourceFile:       group[0].SourceFile,
+		Category:         group[0].Category,
+	}
 }
 
 func parentPath(path string) string {
@@ -333,6 +404,37 @@ func parentPath(path string) string {
 		return ""
 	}
 	return path[:idx]
+}
+
+func isNoiseLine(line string) bool {
+	if line == "" {
+		return false
+	}
+	trimmed := strings.TrimSpace(line)
+	if strings.Trim(trimmed, "#") == "" {
+		return true
+	}
+	if strings.Contains(trimmed, "重要程度") || strings.Contains(trimmed, "出现频率") {
+		return true
+	}
+	return false
+}
+
+func isDecorativeContent(content string) bool {
+	cleaned := cleanDecorativeContent(content)
+	return EstimateTokens(cleaned) < 8
+}
+
+func cleanDecorativeContent(content string) string {
+	var lines []string
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || isNoiseLine(trimmed) {
+			continue
+		}
+		lines = append(lines, trimmed)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 // EstimateTokens 是轻量 token 估算：中文字符按 1 token，连续英文按约 4 字符 1 token。

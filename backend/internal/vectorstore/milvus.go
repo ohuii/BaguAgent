@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"bagu-agent/backend/internal/config"
 
@@ -58,6 +59,8 @@ type SearchResult struct {
 type Store interface {
 	EnsureCollection(ctx context.Context) error
 	InsertChunks(ctx context.Context, chunks []ChunkVector) error
+	DeleteByDocumentID(ctx context.Context, documentID uint64) error
+	Flush(ctx context.Context) error
 	Search(ctx context.Context, req SearchRequest) ([]SearchResult, error)
 }
 
@@ -97,6 +100,24 @@ func (s *LazyMilvusStore) InsertChunks(ctx context.Context, chunks []ChunkVector
 	return store.InsertChunks(ctx, chunks)
 }
 
+// DeleteByDocumentID 按 document_id 删除该文档在 Milvus 中的所有 chunk 向量。
+func (s *LazyMilvusStore) DeleteByDocumentID(ctx context.Context, documentID uint64) error {
+	store, err := s.get(ctx)
+	if err != nil {
+		return err
+	}
+	return store.DeleteByDocumentID(ctx, documentID)
+}
+
+// Flush 刷新 collection，使写入的数据可用于后续检索。
+func (s *LazyMilvusStore) Flush(ctx context.Context) error {
+	store, err := s.get(ctx)
+	if err != nil {
+		return err
+	}
+	return store.Flush(ctx)
+}
+
 // Search 根据 query embedding 检索 TopK chunk。
 func (s *LazyMilvusStore) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {
 	store, err := s.get(ctx)
@@ -123,7 +144,10 @@ func (s *LazyMilvusStore) get(ctx context.Context) (*MilvusStore, error) {
 
 // NewMilvusStore 创建 Milvus 客户端。
 func NewMilvusStore(ctx context.Context, cfg config.MilvusConfig) (*MilvusStore, error) {
-	cli, err := client.NewClient(ctx, client.Config{Address: cfg.Addr})
+	connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	cli, err := client.NewClient(connectCtx, client.Config{Address: cfg.Addr})
 	if err != nil {
 		return nil, fmt.Errorf("connect milvus: %w", err)
 	}
@@ -197,6 +221,30 @@ func (s *MilvusStore) InsertChunks(ctx context.Context, chunks []ChunkVector) er
 	if err != nil {
 		return fmt.Errorf("upsert milvus chunks: %w", err)
 	}
+	return nil
+}
+
+// Flush 刷新 collection，使本次写入尽快对搜索可见。
+// DeleteByDocumentID 按 document_id 删除该文档在 Milvus 中的所有 chunk 向量。
+func (s *MilvusStore) DeleteByDocumentID(ctx context.Context, documentID uint64) error {
+	if documentID == 0 {
+		return nil
+	}
+	exists, err := s.client.HasCollection(ctx, s.cfg.CollectionName)
+	if err != nil {
+		return fmt.Errorf("check milvus collection: %w", err)
+	}
+	if !exists {
+		return nil
+	}
+	expr := fmt.Sprintf("%s == %d", fieldDocumentID, documentID)
+	if err := s.client.Delete(ctx, s.cfg.CollectionName, "", expr); err != nil {
+		return fmt.Errorf("delete milvus document vectors: %w", err)
+	}
+	return s.Flush(ctx)
+}
+
+func (s *MilvusStore) Flush(ctx context.Context) error {
 	if err := s.client.Flush(ctx, s.cfg.CollectionName, false); err != nil {
 		return fmt.Errorf("flush milvus collection: %w", err)
 	}

@@ -23,21 +23,28 @@ type Service struct {
 	docRepo    *Repository
 	chunkRepo  *chunkmodel.Repository
 	indexer    Indexer
+	vectors    VectorDeleter
 }
 
 // NewService 创建文档服务。
-func NewService(storageCfg config.StorageConfig, docRepo *Repository, chunkRepo *chunkmodel.Repository, indexer Indexer) *Service {
+func NewService(storageCfg config.StorageConfig, docRepo *Repository, chunkRepo *chunkmodel.Repository, indexer Indexer, vectors VectorDeleter) *Service {
 	return &Service{
 		storageCfg: storageCfg,
 		docRepo:    docRepo,
 		chunkRepo:  chunkRepo,
 		indexer:    indexer,
+		vectors:    vectors,
 	}
 }
 
 // Indexer 是文档服务依赖的索引能力，避免 document 包反向依赖具体 indexer 包。
 type Indexer interface {
 	IndexDocument(ctx context.Context, documentID uint64) error
+}
+
+// VectorDeleter 是文档删除时依赖的向量库清理能力。
+type VectorDeleter interface {
+	DeleteByDocumentID(ctx context.Context, documentID uint64) error
 }
 
 // UploadMarkdownInput 是 Markdown 上传入参。
@@ -100,6 +107,7 @@ func (s *Service) UploadMarkdown(ctx context.Context, input UploadMarkdownInput)
 			ChunkUID:         id.NewChunkUID(),
 			TitlePath:        parsed.TitlePath,
 			HeadingLevel:     parsed.HeadingLevel,
+			Category:         parsed.Category,
 			Content:          parsed.Content,
 			ContentWithTitle: parsed.ContentWithTitle,
 			ChunkIndex:       parsed.ChunkIndex,
@@ -156,6 +164,14 @@ func (s *Service) IndexDocument(ctx context.Context, documentID uint64) error {
 
 // Delete 删除文档和对应 chunk。Milvus 删除会在第三阶段补上。
 func (s *Service) Delete(ctx context.Context, id uint64) error {
+	if _, err := s.docRepo.GetByID(ctx, id); err != nil {
+		return fmt.Errorf("get document: %w", err)
+	}
+	if s.vectors != nil {
+		if err := s.vectors.DeleteByDocumentID(ctx, id); err != nil {
+			return fmt.Errorf("delete document vectors: %w", err)
+		}
+	}
 	if err := s.chunkRepo.DeleteByDocumentID(ctx, id); err != nil {
 		return fmt.Errorf("delete chunks: %w", err)
 	}

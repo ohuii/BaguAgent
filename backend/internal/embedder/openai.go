@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -35,14 +36,16 @@ func (c *OpenAICompatibleClient) EmbedTexts(ctx context.Context, texts []string)
 	if len(texts) == 0 {
 		return nil, nil
 	}
-	baseURL := strings.TrimRight(c.cfg.BaseURL, "/")
+	baseURL := strings.TrimRight(embeddingBaseURL(c.cfg), "/")
 	if baseURL == "" {
-		return nil, fmt.Errorf("ai.base_url is required")
+		return nil, fmt.Errorf("ai.embedding_base_url or ai.base_url is required")
 	}
 
 	body, err := json.Marshal(embeddingRequest{
-		Model: c.cfg.EmbeddingModel,
-		Input: texts,
+		Model:          c.cfg.EmbeddingModel,
+		Input:          texts,
+		EncodingFormat: "float",
+		Dimensions:     c.dim,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal embedding request: %w", err)
@@ -53,7 +56,7 @@ func (c *OpenAICompatibleClient) EmbedTexts(ctx context.Context, texts []string)
 		return nil, fmt.Errorf("new embedding request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	req.Header.Set("Authorization", "Bearer "+embeddingAPIKey(c.cfg))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -62,7 +65,8 @@ func (c *OpenAICompatibleClient) EmbedTexts(ctx context.Context, texts []string)
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("embedding api status: %s", resp.Status)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("embedding api status: %s, body: %s", resp.Status, strings.TrimSpace(string(respBody)))
 	}
 
 	var result embeddingResponse
@@ -84,8 +88,10 @@ func (c *OpenAICompatibleClient) EmbedTexts(ctx context.Context, texts []string)
 }
 
 type embeddingRequest struct {
-	Model string   `json:"model"`
-	Input []string `json:"input"`
+	Model          string   `json:"model"`
+	Input          []string `json:"input"`
+	EncodingFormat string   `json:"encoding_format,omitempty"`
+	Dimensions     int      `json:"dimensions,omitempty"`
 }
 
 type embeddingResponse struct {

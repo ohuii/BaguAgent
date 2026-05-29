@@ -19,8 +19,22 @@ func New(cfg config.AIConfig, dim int) (Client, error) {
 	if dim <= 0 {
 		return nil, fmt.Errorf("embedding dim must be positive")
 	}
-	if cfg.Provider == "mock" || cfg.APIKey == "" || cfg.EmbeddingModel == "" {
+	if cfg.Provider == "mock" || embeddingAPIKey(cfg) == "" || cfg.EmbeddingModel == "" {
 		return NewMock(dim), nil
 	}
 	return NewOpenAICompatible(cfg, dim), nil
+}
+
+func embeddingBaseURL(cfg config.AIConfig) string {
+	if cfg.EmbeddingBaseURL != "" {
+		return cfg.EmbeddingBaseURL
+	}
+	return cfg.BaseURL
+}
+
+func embeddingAPIKey(cfg config.AIConfig) string {
+	if cfg.EmbeddingAPIKey != "" {
+		return cfg.EmbeddingAPIKey
+	}
+	return cfg.APIKey
 }
