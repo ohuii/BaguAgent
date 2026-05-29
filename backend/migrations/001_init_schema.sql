@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
   chunk_uid VARCHAR(64) NOT NULL UNIQUE,
   title_path VARCHAR(1024) NOT NULL,
   heading_level BIGINT NOT NULL,
+  category VARCHAR(64) NULL,
   content LONGTEXT NOT NULL,
   content_with_title LONGTEXT NOT NULL,
   chunk_index BIGINT NOT NULL,
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
   created_at DATETIME(3) NULL,
   INDEX idx_document_chunks_document_id (document_id),
   INDEX idx_document_chunks_title_path (title_path(255)),
+  INDEX idx_document_chunks_category (category),
   INDEX idx_document_chunks_milvus_pk (milvus_pk)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -67,12 +69,29 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   user_query TEXT NOT NULL,
   intent VARCHAR(64) NOT NULL,
   tools_used JSON NULL,
+  agent_steps_json JSON NULL,
   retrieved_chunks_json JSON NULL,
   final_answer LONGTEXT NULL,
   latency_ms BIGINT NOT NULL DEFAULT 0,
   created_at DATETIME(3) NULL,
   INDEX idx_agent_runs_conversation_id (conversation_id),
   INDEX idx_agent_runs_message_id (message_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS index_tasks (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  task_uid VARCHAR(64) NOT NULL UNIQUE,
+  document_id BIGINT UNSIGNED NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  total_chunks BIGINT NOT NULL DEFAULT 0,
+  indexed_chunks BIGINT NOT NULL DEFAULT 0,
+  error_message TEXT NULL,
+  started_at DATETIME(3) NULL,
+  finished_at DATETIME(3) NULL,
+  created_at DATETIME(3) NULL,
+  updated_at DATETIME(3) NULL,
+  INDEX idx_index_tasks_document_id (document_id),
+  INDEX idx_index_tasks_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS rag_eval_cases (
@@ -100,4 +119,3 @@ CREATE TABLE IF NOT EXISTS rag_eval_results (
   created_at DATETIME(3) NULL,
   INDEX idx_rag_eval_results_eval_case_id (eval_case_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-

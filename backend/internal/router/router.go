@@ -3,12 +3,18 @@ package router
 import (
 	"net/http"
 
+	"bagu-agent/backend/internal/agent"
 	chunkrepo "bagu-agent/backend/internal/chunk"
 	"bagu-agent/backend/internal/config"
+	"bagu-agent/backend/internal/conversation"
 	"bagu-agent/backend/internal/document"
 	"bagu-agent/backend/internal/embedder"
+	"bagu-agent/backend/internal/eval"
 	"bagu-agent/backend/internal/indexer"
+	"bagu-agent/backend/internal/llm"
+	"bagu-agent/backend/internal/message"
 	"bagu-agent/backend/internal/middleware"
+	"bagu-agent/backend/internal/rag"
 	"bagu-agent/backend/internal/retriever"
 	"bagu-agent/backend/internal/vectorstore"
 
@@ -49,15 +55,37 @@ func New(deps Dependencies) *gin.Engine {
 
 		docRepo := document.NewRepository(deps.DB)
 		chunkRepo := chunkrepo.NewRepository(deps.DB)
+		indexTaskRepo := indexer.NewRepository(deps.DB)
+		convRepo := conversation.NewRepository(deps.DB)
+		msgRepo := message.NewRepository(deps.DB)
+		runRepo := agent.NewRepository(deps.DB)
+		evalRepo := eval.NewRepository(deps.DB)
+
 		embeddingClient, err := embedder.New(deps.Config.AI, deps.Config.Milvus.EmbeddingDim)
 		if err != nil {
 			panic(err)
 		}
+		llmClient, err := llm.New(deps.Config.AI)
+		if err != nil {
+			panic(err)
+		}
+		toolCallingModel, err := llm.NewToolCallingModel(deps.Config.AI)
+		if err != nil {
+			panic(err)
+		}
 		milvusStore := vectorstore.NewLazyMilvusStore(deps.Config.Milvus)
-		indexerService := indexer.NewService(deps.Config.Milvus.CollectionName, docRepo, chunkRepo, embeddingClient, milvusStore)
-		docService := document.NewService(deps.Config.Storage, docRepo, chunkRepo, indexerService)
+		indexerService := indexer.NewService(deps.Config.Milvus.CollectionName, docRepo, chunkRepo, embeddingClient, milvusStore, indexTaskRepo, deps.Logger)
+		retrieverService := retriever.NewService(embeddingClient, milvusStore)
+		ragService := rag.NewService(convRepo, msgRepo, runRepo, retrieverService, llmClient, toolCallingModel, deps.Config.AI.AgentMode)
+		evalService := eval.NewService(evalRepo, retrieverService)
+
+		docService := document.NewService(deps.Config.Storage, docRepo, chunkRepo, indexerService, milvusStore)
 		document.NewHandler(docService).RegisterRoutes(api)
-		retriever.NewHandler(retriever.NewService(embeddingClient, milvusStore)).RegisterRoutes(api)
+		indexer.NewHandler(indexerService).RegisterRoutes(api)
+		conversation.NewHandler(convRepo, msgRepo).RegisterRoutes(api)
+		retriever.NewHandler(retrieverService).RegisterRoutes(api)
+		rag.NewHandler(ragService).RegisterRoutes(api)
+		eval.NewHandler(evalService).RegisterRoutes(api)
 	}
 
 	return r

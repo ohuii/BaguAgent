@@ -10,6 +10,7 @@ import (
 	"bagu-agent/backend/internal/conversation"
 	"bagu-agent/backend/internal/document"
 	"bagu-agent/backend/internal/eval"
+	"bagu-agent/backend/internal/indexer"
 	"bagu-agent/backend/internal/message"
 	"bagu-agent/backend/internal/user"
 
@@ -66,6 +67,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&conversation.Conversation{},
 		&message.Message{},
 		&agent.AgentRun{},
+		&indexer.IndexTask{},
 		&eval.RAGEvalCase{},
 		&eval.RAGEvalResult{},
 	)
