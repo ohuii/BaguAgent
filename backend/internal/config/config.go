@@ -1,7 +1,10 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -79,11 +82,16 @@ type StorageConfig struct {
 
 // AIConfig 描述 LLM 和 embedding 服务，第一版按 OpenAI-compatible 接口预留。
 type AIConfig struct {
-	Provider       string `mapstructure:"provider"`
-	ChatModel      string `mapstructure:"chat_model"`
-	EmbeddingModel string `mapstructure:"embedding_model"`
-	BaseURL        string `mapstructure:"base_url"`
-	APIKey         string `mapstructure:"api_key"`
+	Provider         string `mapstructure:"provider"`
+	AgentMode        string `mapstructure:"agent_mode"`
+	ChatModel        string `mapstructure:"chat_model"`
+	EmbeddingModel   string `mapstructure:"embedding_model"`
+	BaseURL          string `mapstructure:"base_url"`
+	APIKey           string `mapstructure:"api_key"`
+	ChatBaseURL      string `mapstructure:"chat_base_url"`
+	ChatAPIKey       string `mapstructure:"chat_api_key"`
+	EmbeddingBaseURL string `mapstructure:"embedding_base_url"`
+	EmbeddingAPIKey  string `mapstructure:"embedding_api_key"`
 }
 
 // Load 读取配置文件并合并 BAGU_ 前缀的环境变量。
@@ -94,6 +102,9 @@ func Load(path string) (*Config, error) {
 
 	if path == "" {
 		path = "configs/config.yaml"
+	}
+	if err := loadDotEnv(path); err != nil {
+		return nil, err
 	}
 	v.SetConfigFile(path)
 	v.SetEnvPrefix("BAGU")
@@ -112,6 +123,77 @@ func Load(path string) (*Config, error) {
 }
 
 // setDefaults 提供本地开发可用的默认值，配置文件仍然拥有更高优先级。
+// loadDotEnv 读取本地 .env 文件，方便开发环境保存 API Key。
+// 已存在的系统环境变量优先级更高，因此手动设置的值不会被 .env 覆盖。
+func loadDotEnv(configPath string) error {
+	candidates := []string{".env"}
+	if configPath != "" {
+		candidates = append(candidates, filepath.Join(filepath.Dir(configPath), "..", ".env"))
+	}
+	for _, candidate := range candidates {
+		if err := loadDotEnvFile(filepath.Clean(candidate)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadDotEnvFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("open .env file %s: %w", path, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			return fmt.Errorf("parse .env file %s line %d: missing '='", path, lineNumber)
+		}
+		key = strings.TrimSpace(strings.TrimPrefix(key, "export "))
+		value = trimEnvValue(value)
+		if key == "" {
+			return fmt.Errorf("parse .env file %s line %d: empty key", path, lineNumber)
+		}
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("set env %s from %s: %w", key, path, err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read .env file %s: %w", path, err)
+	}
+	return nil
+}
+
+func trimEnvValue(value string) string {
+	value = strings.TrimSpace(value)
+	if commentIdx := strings.Index(value, " #"); commentIdx >= 0 {
+		value = strings.TrimSpace(value[:commentIdx])
+	}
+	if len(value) >= 2 {
+		if value[0] == '"' && value[len(value)-1] == '"' {
+			return strings.Trim(value, `"`)
+		}
+		if value[0] == '\'' && value[len(value)-1] == '\'' {
+			return strings.Trim(value, `'`)
+		}
+	}
+	return value
+}
+
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("app.name", "BaguAgent")
 	v.SetDefault("app.env", "local")
@@ -131,4 +213,5 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("milvus.metric_type", "COSINE")
 	v.SetDefault("milvus.index_type", "HNSW")
 	v.SetDefault("storage.upload_dir", "uploads")
+	v.SetDefault("ai.agent_mode", "graph")
 }

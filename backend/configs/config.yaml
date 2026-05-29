@@ -37,7 +37,12 @@ storage:
 
 ai:
   provider: mock
+  agent_mode: graph
   chat_model: ""
   embedding_model: ""
   base_url: ""
   api_key: ""
+  chat_base_url: ""
+  chat_api_key: ""
+  embedding_base_url: ""
+  embedding_api_key: ""
