@@ -11,6 +11,7 @@ type AgentRun struct {
 	UserQuery           string    `gorm:"type:text;not null" json:"user_query"`
 	Intent              string    `gorm:"size:64;not null" json:"intent"`
 	ToolsUsed           *string   `gorm:"type:json" json:"tools_used"`
+	AgentStepsJSON      *string   `gorm:"type:json" json:"agent_steps_json"`
 	RetrievedChunksJSON *string   `gorm:"type:json" json:"retrieved_chunks_json"`
 	FinalAnswer         string    `gorm:"type:longtext" json:"final_answer"`
 	LatencyMS           int64     `gorm:"not null;default:0" json:"latency_ms"`
