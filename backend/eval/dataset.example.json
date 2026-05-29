@@ -1,0 +1,17 @@
+[
+  {
+    "question": "GMP 模型是什么？",
+    "category": "Go",
+    "expected_chunk_uids": ["在此填入该问题对应的目标 chunk_uid"]
+  },
+  {
+    "question": "Go 的 channel 底层结构是怎样的？",
+    "category": "Go",
+    "expected_chunk_uids": ["chunk_uid_1", "chunk_uid_2"]
+  },
+  {
+    "question": "MySQL 的 MVCC 是如何实现的？",
+    "category": "MySQL",
+    "expected_chunk_uids": ["chunk_uid_x"]
+  }
+]

@@ -224,6 +224,42 @@ curl -X POST http://127.0.0.1:8080/api/agent/questions \
   -d '{"user_id":1,"topic":"GMP 模型","category":"Go","count":5,"top_k":5}'
 ```
 
+## 检索质量评测
+
+检索效果用一组人工标注的 golden 数据集量化，指标包括 HitRate、Recall@K、MRR。除了在线评测接口（`/api/eval/cases`、`/api/eval/run`），还提供一个离线基准命令 `cmd/eval`，复用线上同一套 embedder + Milvus 检索链路，一次跑出多个 TopK 档位的对比报告。
+
+准备数据集（参考 `eval/dataset.example.json`），每条用例填入问题和它对应的目标 `chunk_uid`：
+
+```json
+[
+  { "question": "GMP 模型是什么？", "category": "Go", "expected_chunk_uids": ["<chunk_uid>"] }
+]
+```
+
+`chunk_uid` 可以从 `GET /api/documents/:id/chunks` 或检索调试接口 `POST /api/retrieval/search` 的返回里拿到。把标注好的数据集存为 `backend/eval/dataset.json`，然后运行（需要先索引好笔记、配置好真实 embedding 模型，mock 向量无法反映真实语义效果）：
+
+```bash
+cd backend
+go run ./cmd/eval -dataset eval/dataset.json -k 1,3,5,10 -out eval/report.md
+```
+
+输出示例：
+
+```text
+## RAG 检索评测报告
+
+- 用例数：20
+
+| TopK | HitRate | Recall@K | MRR |
+|------|---------|----------|-----|
+| 1    | 0.700   | 0.550    | 0.700 |
+| 3    | 0.900   | 0.825    | 0.788 |
+| 5    | 0.950   | 0.910    | 0.799 |
+| 10   | 1.000   | 0.980    | 0.804 |
+```
+
+> 上表为格式示例，不是真实跑分；真实数字取决于你的笔记内容、embedding 模型与分块策略。改进分块或检索后重跑即可对比提升。
+
 如果要使用真实模型，把 `configs/config.yaml` 里的 `ai.provider` 改成 `openai-compatible`，并通过环境变量传入密钥。对话模型和向量模型可以来自不同平台：
 
 ```bash
